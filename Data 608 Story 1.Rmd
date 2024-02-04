@@ -1,0 +1,172 @@
+---
+title: "Data 608 Story 1"
+author: "Mikhail Broomes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+# Story 1 
+
+The attached Excel file contains data on the present allocation of the Infrastructure Investment and Jobs Act funding by State and Territory.
+Your story (Data Visualization(s) ) should address the following questions:
+Is the allocation equitable based on the population of each of the States and Territories, or is bias apparent?
+
+Does the allocation favor the political interests of the Biden administration?
+
+
+\b Notes: \b
+You will need to source data on the current (estimated) population of each of the States and Territories (accuracy is more important than precision) and on the official election results of the 2020 Presidential election.
+
+You may choose to develop you visualizations using a desktop application or a code library. 
+
+Your submittal should be in the form of a report (document) or a presentation.
+
+This assignment is due by the end of week two of the semester.
+
+```{r setup, include=TRUE}
+
+library(dplyr)
+library(tidyverse)
+library(readr)
+library(rvest)
+
+```
+
+#Gathering data 
+
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MAB592/DATA-608-SP2024/main/IIJA%20FUNDING%20AS%20OF%20MARCH%202023.csv")
+
+# Renaming the State column 
+
+df <- df %>% 
+  rename(State = "State, Teritory or Tribal Nation")
+
+head(df)
+```
+Gathering Population data using rvest 
+
+```{r}
+pop_link <- "https://simple.wikipedia.org/wiki/List_of_U.S._states_by_population" 
+pop_page <- read_html(pop_link)
+
+Population <- pop_page %>% 
+  html_nodes("td:nth-child(4)") %>% 
+  html_text()
+
+State <- pop_page %>% 
+  html_nodes(".flagicon+ a") %>% 
+  html_text()
+
+df2 <-  data.frame(State,Population = Population[1:56]) 
+
+df2$State <- toupper(df2$State)
+
+head(df2)
+```
+
+```{r}
+new_row <- data.frame(State = "TRIBAL COMMUNITIES", Population = "8,750,000")
+
+df2 <- rbind(df2, new_row)
+```
+
+
+Gathering Election data since I found a simple data that summarized the results so I used Chatgpt to organize it since Rvest was giving me trouble 
+
+```{r}
+final_results <- data.frame(
+  State = c(
+    "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia",
+    "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
+    "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire",
+    "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania",
+    "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
+    "West Virginia", "Wisconsin", "Wyoming", "Washington D.C.", "American Samoa", "Guam", "Northern Mariana Islands", "Puerto Rico",
+    "Tribal Communities" 
+  ),
+  Party = c(
+    "Rep", "Rep", "Dem", "Rep", "Dem", "Dem", "Dem", "Dem", "Rep", "Dem", 
+    "Dem", "Rep", "Dem", "Rep", "Rep", "Rep", "Rep", "Rep", "Dem", "Dem",
+    "Dem", "Dem", "Dem", "Rep", "Rep","Rep", "Rep", "Dem", "Dem", "Dem",
+    "Dem", "Dem", "Rep", "Rep", "Rep", "Rep", "Dem", "Dem", "Dem", "Rep", "Rep",
+    "Rep", "Rep", "Rep", "Rep", "Dem", "Dem", "Dem", "Rep", "Dem", "Rep", 
+    "Dem", "Rep", "Dem", "D/R", "Dem" 
+  )
+)
+
+final_results$State <- toupper(final_results$State)
+```
+
+
+Merging all the data and cleaning it appropriately 
+
+```{r}
+df3 <- merge(df,df2 , by = "State")
+
+data <- merge(df3, final_results , by = "State")
+
+data$Population <- str_remove(data$Population,"\n")
+
+data$Population <- as.numeric(gsub(",", "", data$Population))
+
+data$`Total (Billions)` <- as.numeric(data$`Total (Billions)`)
+
+head(data)
+
+
+```
+
+Doing some Visualizations 
+
+```{r}
+ggplot(data, aes(x = `Total (Billions)`, y = Population, color = Party)) +
+  geom_point(size = 3) + 
+   geom_smooth(method = "lm", se = FALSE, color = "black") + 
+  labs(x = "Total (Billions)", y = "Population", color = "Party") +  
+  ggtitle("Scatter Plot of Total (Billions) vs. Population") +  
+  theme_minimal() +
+  scale_color_manual(values = c("Rep" = "red", "Dem" = "blue"))+
+  theme(
+    panel.grid.major = element_line(color = "gray", linetype = "dotted"),  
+    panel.background = element_rect(fill = "lightgray"), 
+    axis.text = element_text(size = 12, color = "black"),  
+    axis.title = element_text(size = 14, face = "bold"),  
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  
+    legend.position = "right"  
+  )
+```
+# Question 1 - Is the allocation equitable based on the population of each of the States and Territories, or is bias apparent?
+
+Using a Scatterplot we can see that as the population grows the allocation of funds increases so there is no apparent bias based on the plot 
+
+
+
+
+Calculating for the Allocation per capita based on the population 
+
+```{r}
+
+data$`Allocation Per Capita` <- (data$`Total (Billions)` * 1e9)/data$Population
+
+```
+
+
+```{r}
+# Comparing only Democrat and Republicans as there are some areas with a split 
+
+filtered_data <- data %>% 
+  filter(Party %in% c("Dem", "Rep"))
+
+ggplot(filtered_data, aes(x = Party, y = `Allocation Per Capita`, fill = Party)) +
+  geom_boxplot() +
+  labs(x = "Party", y = "Allocation Per Capita (Billions)", title = "Allocation Per Capita by Party") +
+  theme_minimal()
+```
+
+# Question 2 - Does the allocation favor the political interests of the Biden administration?
+
+As we can see based on the allocation per capita as seen in the box plot we can see that there is more allocation of funds to the republican compared to the Democratic party so I would say no the allocation doesn't favor the democratic party.
